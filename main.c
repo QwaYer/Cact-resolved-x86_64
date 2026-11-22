@@ -165,6 +165,27 @@ static void cache_add(const char *name, uint32_t ip) {
 /* Resolve a name and write the answer to the client. */
 static void handle_name(int cl, char *name) {
     char resp[192];
+
+    /* "AAAA <name>" asks for an IPv6 address (the reply is "OK6 <addr>"); a
+     * bare name (or "A <name>") stays the IPv4 form the tools already speak. */
+    if (strncmp(name, "AAAA ", 5) == 0) {
+        uint8_t a6[16];
+        char b[46];
+        if (dns_resolve_aaaa(name + 5, a6) == 0 &&
+            inet_ntop(AF_INET6, a6, b, sizeof(b)))
+            snprintf(resp, sizeof(resp), "OK6 %s\n", b);
+        else
+            snprintf(resp, sizeof(resp), "ERR no such name\n");
+        send(cl, resp, (uint32_t)strlen(resp), 0);
+        char line[160];
+        snprintf(line, sizeof(line), "resolved: AAAA %s %s", name + 5, resp);
+        log_event(line);
+        printf("resolved: AAAA %s %s", name + 5, resp);
+        return;
+    }
+    if (strncmp(name, "A ", 2) == 0)
+        name += 2;
+
     uint32_t ip_host = 0;
 
     int hit = cache_lookup(name, &ip_host);
